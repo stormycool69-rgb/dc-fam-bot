@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: discord-event-bot
+    runtime: python
+    plan: free            # free sleeps after 15 min without web traffic -> see README (UptimeRobot)
+    buildCommand: pip install -r requirements.txt
+    startCommand: python event_bot.py
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.7
+      - key: DISCORD_TOKEN
+        sync: false       # you type this in the Render dashboard
+      - key: GUILD_ID
+        sync: false
+    # --- Keep events across restarts/redeploys (needs a paid plan, e.g. starter) ---
+    # Change plan above to "starter", uncomment the disk below and add env var DATA_DIR=/data
+    # disk:
+    #   name: bot-data
+    #   mountPath: /data
+    #   sizeGB: 1

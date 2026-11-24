@@ -129,7 +129,7 @@ def close_at(s, start):
 
 
 def end_at(s, start):
-    end = start + GRACE
+    end = max(start, close_at(s, start)) + GRACE
     if s["repeat_hours"]:
         next_post = add_interval(start, s["repeat_hours"]) - timedelta(seconds=s["send_offset"])
         end = min(end, next_post)
@@ -293,7 +293,7 @@ class EventView(discord.ui.View):
     name="Event name (e.g. Informal Event)",
     start_time="When the event starts: YYYY-MM-DD HH:MM (UK, 24h) or just HH:MM",
     send_time="When to post the message: YYYY-MM-DD HH:MM or HH:MM (UK)",
-    close_time="When registration closes: YYYY-MM-DD HH:MM or HH:MM (UK)",
+    close_time="When registration closes (can be after start): YYYY-MM-DD HH:MM or HH:MM (UK)",
     limit="Main roster size (extra people go to Subs)",
     channel="Channel to post the event in",
     voice_channel="Voice channel to check attendance in",
@@ -327,18 +327,24 @@ async def event_create(
 
         send_dt = parse_uk(send_time, ref=start)
         close_dt = parse_uk(close_time, ref=start)
-        # "HH:MM" values that land after the start belong to the previous day
+        # "HH:MM" send time that lands after the start belongs to the previous day
         if TIME_ONLY.match(send_time.strip()) and send_dt > start:
             send_dt = add_interval(send_dt, -24)
-        if TIME_ONLY.match(close_time.strip()) and close_dt > start:
-            close_dt = add_interval(close_dt, -24)
+        # "HH:MM" close time earlier than send time (e.g. crosses midnight) -> next day
+        if TIME_ONLY.match(close_time.strip()) and close_dt < send_dt:
+            later = add_interval(close_dt, 24)
+            if later <= start + timedelta(hours=12):
+                close_dt = later
     except ValueError:
         return await interaction.followup.send(TIME_HELP, ephemeral=True)
 
     # ---- validate ----
-    if not (send_dt <= close_dt <= start):
+    if send_dt > start or send_dt > close_dt:
         return await interaction.followup.send(
-            "❌ Order must be: **send_time ≤ close_time ≤ start_time**.", ephemeral=True
+            "❌ **send_time** must be before **start_time** and before **close_time**.\n"
+            f"I read your times as:\n"
+            f"• send: {uk_str(send_dt)}\n• close: {uk_str(close_dt)}\n• start: {uk_str(start)}",
+            ephemeral=True,
         )
     if not rep and start <= now:
         return await interaction.followup.send("❌ The start time is in the past.", ephemeral=True)
